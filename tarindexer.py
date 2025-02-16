@@ -24,7 +24,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 #
 
-
+import io
 import tarfile
 import sys
 import os
@@ -50,7 +50,6 @@ def human(size):
 def indextar(dbtarfile,indexfile):
     filesize = os.path.getsize(dbtarfile)
     lastpercent = 0
-    
 
     with tarfile.open(dbtarfile, 'r|') as db:
         if os.path.isfile(indexfile):
@@ -80,6 +79,25 @@ def indextar(dbtarfile,indexfile):
                         print('ETA: '+str(int(eta))+'s (estimate '+str(int(estimate))+'s)')
     print('done.')
 
+# Currently uses too much memory to be functional on >50 GB tarballs
+# even though "r|" is used instead of "r"
+def indextarstdin(indexfile):
+#    filesize = 249610332160 # fix later
+    with tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read()), bufsize=10240, mode='r|') as db:
+        if os.path.isfile(indexfile):
+            print('file exists. exiting')
+        with open(indexfile, 'w') as outfile:
+            counter = 0
+            for tarinfo in db:
+                currentseek = tarinfo.offset_data
+                rec = "%s %d %d\n" % (tarinfo.name, tarinfo.offset_data, tarinfo.size)
+                outfile.write(rec)
+                counter += 1
+                if counter % 10 == 0:
+                    # free ram...
+                    db.members = []
+    print('done.')
+
 def lookup(dbtarfile,indexfile,path):
     with open(dbtarfile, 'rb') as tar:
         with  open(indexfile, 'r') as outfile:
@@ -102,9 +120,12 @@ def main():
         exit(0)
 
     if sys.argv[1] == '-i':
-        MODE = 'index'
         dbtarfile = sys.argv[2]
         indexfile = sys.argv[3]
+        if dbtarfile == "-":
+            MODE = 'indexstdin'
+        else:
+            MODE = 'index'
     elif sys.argv[1] == '-l':
         MODE = 'lookup'
         dbtarfile = sys.argv[2]
@@ -118,8 +139,8 @@ def main():
         indextar(dbtarfile,indexfile)
     elif MODE == 'lookup':
         lookup(dbtarfile,indexfile,path)
+    else:
+        indextarstdin(indexfile)
 
 if __name__ == "__main__":
-    main()    
-
-    
+    main()
